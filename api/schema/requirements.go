@@ -17,6 +17,7 @@ type CourseRequirement struct {
 	MinimumGrade   string `bson:"minimum_grade" json:"minimum_grade"`
 }
 
+// CourseRequirement represents a requirement for a specific course.
 func NewCourseRequirement(classRef string, minGrade string) *CourseRequirement {
 	return &CourseRequirement{Requirement{"course"}, classRef, minGrade}
 }

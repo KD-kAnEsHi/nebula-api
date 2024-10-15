@@ -1,3 +1,5 @@
+// Package controllers handles the business logic of the API, including the AutocompleteDAG function, which executes an aggregation pipeline query against
+// MongoDB to provide autocomplete suggestions for course-related data.
 package controllers
 
 import (
@@ -14,12 +16,22 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
+// AutocompleteDAG fetches autocomplete suggestions for courses based on the aggregation pipeline. It retrieves related sections and professors
+// by performing several MongoDB lookups and unwinds, before grouping the results into course numbers and subject prefixes.
+// This method also handles HTTP GET requests and returns a JSON response containing  the relevant course and professor data.
+//
+// Parameters:
+//   - c: *gin.Context - Gin's context to handle the request, response, and parameters.
+//
+// Returns:
+//   - JSON response with autocomplete results for courses and professors.
 func AutocompleteDAG(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	var autocompleteDAG []map[string]interface{}
 
+	// This program defines the aggregation pipeline
 	autocompletePipeline := mongo.Pipeline{
 		bson.D{
 			{Key: "$lookup",
@@ -178,19 +190,18 @@ func AutocompleteDAG(c *gin.Context) {
 		},
 	}
 
-	// get cursor for aggregation pipeline query results
-	// pipeline aggregated against the courses collection
+	// Gets cursor for aggregation pipeline query results and execute the aggregation against the courses collection
 	cursor, err := courseCollection.Aggregate(ctx, autocompletePipeline)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, responses.AutocompleteResponse{Status: http.StatusInternalServerError, Message: "error", Data: err.Error()})
 		return
 	}
 
-	// retrieve and parse all valid documents
+	// retrieve and parse all valid documents from the cursor
 	if err = cursor.All(ctx, &autocompleteDAG); err != nil {
 		panic(err)
 	}
 
-	// return result
+	// Return the response with the aggregation results
 	c.JSON(http.StatusOK, responses.AutocompleteResponse{Status: http.StatusOK, Message: "success", Data: autocompleteDAG})
 }

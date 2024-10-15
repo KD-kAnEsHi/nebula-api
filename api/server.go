@@ -1,3 +1,4 @@
+// Package main is the entry point for the Nebula Labs API application and it sets up the API server, configures routes, middleware, and handles requests.
 package main
 
 import (
@@ -22,6 +23,19 @@ import (
 // @securitydefinitions.apikey apiKey
 // @name x-api-key
 // @in header
+
+// Main initializes the application, sets up the router, and starts the API server and connects to the database, configures middleware, and registers
+// routes for the application.
+//
+// Middleware functions include:
+//   - CORS: Enables Cross-Origin Resource Sharing.
+//   - LogRequest: Logs incoming requests for monitoring purposes.
+//
+// Swagger documentation is hosted at the "/swagger/*any" endpoint.
+//
+// Example usage:
+//
+//	go run main.go
 func main() {
 	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 
@@ -56,6 +70,8 @@ func main() {
 	log.Logger.Debug().Str("port", portString).Msg("Listening to port")
 }
 
+// CORS returns a gin.HandlerFunc that sets up the CORS headers for incoming requests and allows requests from any origin and specifies which
+// headers and methods are permitted. For preflight requests (OPTIONS), it responds with a 204 No Content status.
 func CORS() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
@@ -72,14 +88,12 @@ func CORS() gin.HandlerFunc {
 	}
 }
 
-/// Test changes
-
+// This function logs tdetails about incoming HTTP requests, including the method, path, and host, for monitoring purposes.
 func LogRequest(c *gin.Context) {
 	log.Logger.Info().
 		Str("method", c.Request.Method).
 		Str("path", c.Request.URL.Path).
 		Str("host", c.Request.Host).
 		Send()
-
 	c.Next()
 }

@@ -82,7 +82,15 @@ func GradesAggregationOverall() gin.HandlerFunc {
 	}
 }
 
-// base function, returns the grade distribution depending on type of flag
+// gradesAggregation performs the aggregation of grade distributions based on the provided flag, which can either be "semester" or "overall".
+// The function uses MongoDB aggregations and queries to filter grade distributions by course, professor, and section, and returns the
+// results based on the requested aggregation type.
+//
+// Parameters:
+// - flag (string): The type of aggregation, either "semester" or "overall".
+// - c (*gin.Context): The HTTP context for handling request parameters and responses.
+//
+// Returns the grade distribution depending on type of flag
 func gradesAggregation(flag string, c *gin.Context) {
 	var grades []map[string]interface{}
 	var results []map[string]interface{}
@@ -91,6 +99,7 @@ func gradesAggregation(flag string, c *gin.Context) {
 	var collection *mongo.Collection
 	var pipeline mongo.Pipeline
 
+	// MongoDB match filters for different fields (courses, professors, sections)
 	var sectionMatch bson.D
 	var courseMatch bson.D
 	var courseFind bson.D
@@ -104,12 +113,14 @@ func gradesAggregation(flag string, c *gin.Context) {
 
 	// @TODO: Recommend forcing using first_name and last_name to ensure single professors per query.
 	// All professors sharing the name will be aggregated together in the current implementation
+	// Extract query parameters from the HTTP request (optional course or professor filters)
 	prefix := c.Query("prefix")
 	number := c.Query("number")
 	section_number := c.Query("section_number")
 	first_name := c.Query("first_name")
 	last_name := c.Query("last_name")
 
+	//	Check if a professor filter is provided (either first or last name)
 	professor := (first_name != "" || last_name != "")
 
 	lookupSectionsStage := bson.D{
@@ -121,8 +132,10 @@ func gradesAggregation(flag string, c *gin.Context) {
 		}},
 	}
 
+	// Unwind the joined sections array to process each section individually
 	unwindSectionsStage := bson.D{{Key: "$unwind", Value: bson.D{{Key: "path", Value: "$sections"}}}}
 
+	// Project only the grade distribution and academic session name from the sections
 	projectGradeDistributionStage := bson.D{
 		{Key: "$project", Value: bson.D{
 			{Key: "_id", Value: "$sections.academic_session.name"},
@@ -137,6 +150,7 @@ func gradesAggregation(flag string, c *gin.Context) {
 		}},
 	}
 
+	// Additional MongoDB stages to aggregate, sort, and sum the grade distributions.
 	unwindGradeDistributionStage := bson.D{
 		{Key: "$unwind", Value: bson.D{
 			{Key: "path", Value: "$grade_distribution"},
@@ -171,26 +185,26 @@ func gradesAggregation(flag string, c *gin.Context) {
 	}
 	switch {
 	case prefix != "" && number == "" && section_number == "" && !professor:
-		// Filter on Course
+		// Filter on Course prefix only
 		collection = courseCollection
 		courseMatch = bson.D{{Key: "$match", Value: bson.M{"subject_prefix": prefix}}}
 		pipeline = mongo.Pipeline{courseMatch, lookupSectionsStage, unwindSectionsStage, projectGradeDistributionStage, unwindGradeDistributionStage, groupGradesStage, sortGradesStage, sumGradesStage, groupGradeDistributionStage}
 
 	case prefix != "" && number != "" && section_number == "" && !professor:
-		// Filter on Course
+		// Filter on course prefix and number
 		collection = courseCollection
 		courseMatch := bson.D{{Key: "$match", Value: bson.M{"subject_prefix": prefix, "course_number": number}}}
 		pipeline = mongo.Pipeline{courseMatch, lookupSectionsStage, unwindSectionsStage, projectGradeDistributionStage, unwindGradeDistributionStage, groupGradesStage, sortGradesStage, sumGradesStage, groupGradeDistributionStage}
 
 	case prefix != "" && number != "" && section_number != "" && !professor:
-		// Filter on Course then Section
+		// Filter on course prefix, number, and section number
 		collection = courseCollection
 		courseMatch := bson.D{{Key: "$match", Value: bson.M{"subject_prefix": prefix, "course_number": number}}}
 		sectionMatch := bson.D{{Key: "$match", Value: bson.M{"sections.section_number": section_number}}}
 		pipeline = mongo.Pipeline{courseMatch, lookupSectionsStage, unwindSectionsStage, sectionMatch, projectGradeDistributionStage, unwindGradeDistributionStage, groupGradesStage, sortGradesStage, sumGradesStage, groupGradeDistributionStage}
 
 	case prefix == "" && number == "" && section_number == "" && professor:
-		// Filter on Professor
+		// Filter on professor only (first or last name)
 		collection = professorCollection
 
 		// Build professorMatch
@@ -240,13 +254,14 @@ func gradesAggregation(flag string, c *gin.Context) {
 			profIDs = append(profIDs, profID)
 		}
 
-		// Get valid course ids
+		// Get valid course ids based on the provided course prefix and/or number
 		if number == "" {
 			courseFind = bson.D{{Key: "subject_prefix", Value: prefix}}
 		} else {
 			courseFind = bson.D{{Key: "subject_prefix", Value: prefix}, {Key: "course_number", Value: number}}
 		}
 
+		// Perform MongoDB query to find matching courses
 		cursor, err = courseCollection.Find(ctx, courseFind)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, responses.GradeResponse{Status: http.StatusInternalServerError, Message: "error", Data: err.Error()})
@@ -256,6 +271,7 @@ func gradesAggregation(flag string, c *gin.Context) {
 			panic(err)
 		}
 
+		// Extract course IDs from query results
 		for _, course := range results {
 			courseID := course["_id"].(primitive.ObjectID)
 			courseIDs = append(courseIDs, courseID)

@@ -1,3 +1,5 @@
+// Package controllers handles HTTP request routing and responses for Nebula's API, including scraping evaluation data
+// for specific course sections and retrieving that data from MongoDB.
 package controllers
 
 import (
@@ -27,6 +29,16 @@ import (
 
 var evaluationCollection *mongo.Collection = configs.GetCollection("evaluations")
 
+// EvalBySectionID handles a GET request to retrieve evaluation data for a specific course section. The function checks if an evaluation for
+// the given section is already stored in MongoDB. If its not stored the program scrapes the evaluation data from UTD's coursebook website on-demand.
+//
+// Parameters:
+// - c: The Gin context that contains the request and response for the HTTP call.
+//
+// Possible response status codes:
+// - 200: Success with the evaluation data.
+// - 400: Invalid section ID.
+// - 500: Internal server error during database retrieval or scraping process.
 func EvalBySectionID(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 
@@ -36,6 +48,7 @@ func EvalBySectionID(c *gin.Context) {
 	var section schema.Section
 	var course schema.Course
 
+	// Ensure the context is canceled once the function returns.
 	defer cancel()
 
 	// Parse object id from id parameter
@@ -46,7 +59,7 @@ func EvalBySectionID(c *gin.Context) {
 		return
 	}
 
-	// First, check if we've already parsed an eval for this section before
+	// First, check if evaluation already exists for this section in the database
 	err = evaluationCollection.FindOne(ctx, bson.M{"_id": objId}).Decode(&eval)
 
 	// If not, perform on-demand scraping
@@ -58,7 +71,7 @@ func EvalBySectionID(c *gin.Context) {
 			return
 		}
 
-		// Find and parse matching section
+		// Find and parse matching section using the section ID
 		err = sectionCollection.FindOne(ctx, bson.M{"_id": objId}).Decode(&section)
 		if err != nil {
 			log.WriteError(err)
@@ -66,9 +79,10 @@ func EvalBySectionID(c *gin.Context) {
 			return
 		}
 
-		// Find and parse course associated with section
+		// Find the course associated with the section.
 		objId = section.Course_reference
 
+		// Find section and course for scraping
 		err = courseCollection.FindOne(ctx, bson.M{"_id": objId}).Decode(&course)
 		if err != nil {
 			log.WriteError(err)
@@ -76,6 +90,7 @@ func EvalBySectionID(c *gin.Context) {
 			return
 		}
 
+		// Scrape the evaluation data
 		evalResult, err := ScrapeEval(course, section)
 		if err != nil {
 			log.WriteError(err)
@@ -85,7 +100,7 @@ func EvalBySectionID(c *gin.Context) {
 		eval = *evalResult
 	}
 
-	// Return result
+	// Return the evaluation result as a JSON response
 	c.JSON(http.StatusOK, responses.EvaluationResponse{Status: http.StatusOK, Message: "success", Data: eval})
 }
 
@@ -99,6 +114,7 @@ func ScrapeEval(course schema.Course, section schema.Section) (*schema.Evaluatio
 	// Get auth headers
 	headers := refreshToken(chromedpCtx)
 
+	// Build the section ID string based on course and section details.
 	sectionID := course.Subject_prefix + course.Course_number + "." + section.Section_number + "." + section.Academic_session.Name
 
 	log.WriteDebug(fmt.Sprintf("Finding eval for %s", sectionID))
@@ -112,6 +128,7 @@ func ScrapeEval(course schema.Course, section schema.Section) (*schema.Evaluatio
 	if err != nil {
 		panic(err)
 	}
+
 	req.Header = headers
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -120,9 +137,11 @@ func ScrapeEval(course schema.Course, section schema.Section) (*schema.Evaluatio
 	if res.StatusCode != 200 {
 		return nil, fmt.Errorf("section find failed! Status was: %s\nIf the status is 404, you've likely been IP ratelimited", res.Status)
 	}
+	// Read the response body into a buffer
 	buf := bytes.Buffer{}
 	buf.ReadFrom(res.Body)
 
+	// Write the HTML content to a file for testing purposes
 	file, err := os.Create("./HTML_TEST.html")
 	if err != nil {
 		return nil, err
@@ -133,14 +152,14 @@ func ScrapeEval(course schema.Course, section schema.Section) (*schema.Evaluatio
 
 	// TODO: Perform HTML parsing and build eval
 
+	// Return an empty evaluation for now
 	return &schema.Evaluation{}, nil
 }
 
 // The 2 functions below are copied from API-Tools to support on-demand scraping
-
 var chromeDpMutex sync.Mutex
 
-// Initializes chromedp using the default executable allocator
+// Initializes chromedp using the default executable allocator, this locks the mutex to ensure the initialization is thread-safe.
 func initChromeDp() (chromedpCtx context.Context, cancelFnc context.CancelFunc) {
 	chromeDpMutex.Lock()
 	log.WriteDebug("Initializing chromedp...")
@@ -156,7 +175,14 @@ const tokenRateLimit time.Duration = time.Second * 10
 var lastTokenTime time.Time = time.Date(2003, time.March, 21, 7, 47, 0, 0, time.Now().Location())
 var cachedCookie map[string][]string
 
-// Generates a fresh auth token and returns the new headers
+// refreshToken refreshes the authentication token used for scraping the UTD coursebook and generates a fresh auth token
+// It uses a mutex lock to avoid overlapping token refreshes when multiple requests occur simultaneously.
+//
+// Parameters:
+// - chromedpCtx: The ChromeDP context used for web scraping.
+//
+// Returns:
+// - A map of headers, including the updated cookies.
 func refreshToken(chromedpCtx context.Context) map[string][]string {
 
 	// Due to how Gin works, multiple request goroutines may try to refresh their token simultaneously; wrap this area in a mutex lock so as to avoid overlapping refreshes
@@ -167,9 +193,11 @@ func refreshToken(chromedpCtx context.Context) map[string][]string {
 		return cachedCookie
 	}
 
+	// Retrieve the NetID and password from the environment variables.
 	netID, password := configs.GetEnvLogin()
 
 	log.WriteDebug("Getting new token...")
+	// Clear browser cookies, navigate to the login page, and authenticate using chromedp.
 	_, err := chromedp.RunResponse(chromedpCtx,
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			err := network.ClearBrowserCookies().Do(ctx)
@@ -186,6 +214,7 @@ func refreshToken(chromedpCtx context.Context) map[string][]string {
 		panic(err)
 	}
 
+	// Retrieve cookies from the browser session after login.
 	var cookieStrs []string
 	_, err = chromedp.RunResponse(chromedpCtx,
 		chromedp.Navigate(`https://coursebook.utdallas.edu/`),
@@ -210,6 +239,7 @@ func refreshToken(chromedpCtx context.Context) map[string][]string {
 		panic(err)
 	}
 
+	// Cache the retrieved cookies for future requests.
 	cachedCookie = map[string][]string{
 		"Host":            {"coursebook.utdallas.edu"},
 		"User-Agent":      {"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/110.0"},
@@ -223,5 +253,6 @@ func refreshToken(chromedpCtx context.Context) map[string][]string {
 	// Unlock the mutex now that we've cached a cookie
 	chromeDpMutex.Unlock()
 
+	// Return the updated cookie headers
 	return cachedCookie
 }

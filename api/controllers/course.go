@@ -1,3 +1,4 @@
+// Package controllers handles the business logic of the API, including functions to retrieve course information from a MongoDB collection.
 package controllers
 
 import (
@@ -17,8 +18,11 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
+// The courseCollection variable represents the MongoDB collection for courses.
 var courseCollection *mongo.Collection = configs.GetCollection("courses")
 
+// CourseSearch retrieves all courses matching the provided query parameters and returns a list of courses that match the specified filters in JSON format.
+//
 // @Id courseSearch
 // @Router /course [get]
 // @Description "Returns all courses matching the query's string-typed key-value pairs"
@@ -37,15 +41,16 @@ var courseCollection *mongo.Collection = configs.GetCollection("courses")
 // @Param offering_frequency query string false "The frequency of offering a course"
 // @Success 200 {array} schema.Course "A list of courses"
 func CourseSearch(c *gin.Context) {
-	//name := c.Query("name")            // value of specific query parameter: string
-	//queryParams := c.Request.URL.Query() // map of all query params: map[string][]string
+	//name := c.Query("name")            	// value of specific query parameter: string
+	//queryParams := c.Request.URL.Query() 	// map of all query params: map[string][]string
 
+	// Context with timeout for MongoDB operations
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	var courses []schema.Course
 
-	// build query key value pairs (only one value per key)
+	// Build query key-value pairs (only one value per key)
 	query, err := schema.FilterQuery[schema.Course](c)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, responses.ErrorResponse{Status: http.StatusBadRequest, Message: "schema validation error", Data: err.Error()})
@@ -59,7 +64,7 @@ func CourseSearch(c *gin.Context) {
 		return
 	}
 
-	// get cursor for query results
+	// Get cursor for query results
 	cursor, err := courseCollection.Find(ctx, query, optionLimit)
 	if err != nil {
 		log.WriteError(err)
@@ -67,16 +72,18 @@ func CourseSearch(c *gin.Context) {
 		return
 	}
 
-	// retrieve and parse all valid documents
+	// Retrieve and parse all valid documents
 	if err = cursor.All(ctx, &courses); err != nil {
 		log.WritePanic(err)
 		panic(err)
 	}
 
-	// return result
+	// Rturn result
 	c.JSON(http.StatusOK, responses.MultiCourseResponse{Status: http.StatusOK, Message: "success", Data: courses})
 }
 
+// CourseById retrieves the course with the given ID and returns a single course in JSON format
+//
 // @Id courseById
 // @Router /course/{id} [get]
 // @Description "Returns the course with given ID"
@@ -84,6 +91,7 @@ func CourseSearch(c *gin.Context) {
 // @Param id path string true "ID of the course to get"
 // @Success 200 {object} schema.Course "A course"
 func CourseById(c *gin.Context) {
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -91,7 +99,7 @@ func CourseById(c *gin.Context) {
 
 	var course schema.Course
 
-	// parse object id from id parameter
+	// Parse object id from id parameter
 	objId, err := primitive.ObjectIDFromHex(courseId)
 	if err != nil {
 		log.WriteError(err)
@@ -99,7 +107,7 @@ func CourseById(c *gin.Context) {
 		return
 	}
 
-	// find and parse matching course
+	// Find and parse matching course
 	err = courseCollection.FindOne(ctx, bson.M{"_id": objId}).Decode(&course)
 	if err != nil {
 		log.WriteError(err)
@@ -107,10 +115,11 @@ func CourseById(c *gin.Context) {
 		return
 	}
 
-	// return result
+	// Return result
 	c.JSON(http.StatusOK, responses.SingleCourseResponse{Status: http.StatusOK, Message: "success", Data: course})
 }
 
+// CourseAll retrieves all courses in the collection and returns a list of all courses in JSON format.
 func CourseAll(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 
@@ -125,11 +134,11 @@ func CourseAll(c *gin.Context) {
 		return
 	}
 
-	// retrieve and parse all valid documents
+	// Retrieve and parse all valid documents
 	if err = cursor.All(ctx, &courses); err != nil {
 		panic(err)
 	}
 
-	// return result
+	// Return result
 	c.JSON(http.StatusOK, responses.MultiCourseResponse{Status: http.StatusOK, Message: "success", Data: courses})
 }

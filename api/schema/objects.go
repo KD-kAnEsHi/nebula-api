@@ -6,6 +6,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
+// Course represents an academic course with various attributes.
 type Course struct {
 	Id                       primitive.ObjectID     `bson:"_id" json:"_id" schema:"-"`
 	Subject_prefix           string                 `bson:"subject_prefix" json:"subject_prefix" schema:"subject_prefix"`
@@ -30,12 +31,14 @@ type Course struct {
 	Attributes               interface{}            `bson:"attributes" json:"attributes" schema:"-"`
 }
 
+// AcademicSession represents an academic session, including its name and duration.
 type AcademicSession struct {
 	Name       string    `bson:"name" json:"name"`
 	Start_date time.Time `bson:"start_date" json:"start_date"`
 	End_date   time.Time `bson:"end_date" json:"end_date"`
 }
 
+// Assistant represents a teaching assistant with personal details.
 type Assistant struct {
 	First_name string `bson:"first_name" json:"first_name"`
 	Last_name  string `bson:"last_name" json:"last_name"`
@@ -43,12 +46,14 @@ type Assistant struct {
 	Email      string `bson:"email" json:"email"`
 }
 
+// Location represents a physical location for meetings or office hours.
 type Location struct {
 	Building string `bson:"building" json:"building"`
 	Room     string `bson:"room" json:"room"`
 	Map_uri  string `bson:"map_uri" json:"map_uri"`
 }
 
+// Meeting represents a scheduled meeting for a course section.
 type Meeting struct {
 	Start_date   time.Time `bson:"start_date" json:"start_date"`
 	End_date     time.Time `bson:"end_date" json:"end_date"`
@@ -59,6 +64,7 @@ type Meeting struct {
 	Location     Location  `bson:"location" json:"location"`
 }
 
+// Section represents each specific sections of a course.
 type Section struct {
 	Id                    primitive.ObjectID     `bson:"_id" json:"_id" schema:"-"`
 	Section_number        string                 `bson:"section_number" json:"section_number" schema:"section_number"`
@@ -76,6 +82,7 @@ type Section struct {
 	Attributes            interface{}            `bson:"attributes" json:"attributes" schema:"-"`
 }
 
+// Professor represents the instructor for a course.
 type Professor struct {
 	Id           primitive.ObjectID   `bson:"_id" json:"_id" schema:"-"`
 	First_name   string               `bson:"first_name" json:"first_name" schema:"first_name"`
@@ -90,6 +97,7 @@ type Professor struct {
 	Sections     []primitive.ObjectID `bson:"sections" json:"sections" schema:"-"`
 }
 
+// Organization represents the academic organization or group.
 type Organization struct {
 	Id             primitive.ObjectID `bson:"_id" json:"_id"`
 	Title          string             `bson:"title" json:"title"`
@@ -100,6 +108,7 @@ type Organization struct {
 	Picture_data   string             `bson:"picture_data" json:"picture_data"`
 }
 
+// Event represents the event related to courses or organizations.
 type Event struct {
 	Id                 primitive.ObjectID `bson:"_id" json:"_id"`
 	Summary            string             `bson:"summary" json:"summary"`
